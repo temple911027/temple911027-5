@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="viewport" content="width=device-width, initial-scale=1.0">
+    <title>慧霖宮班程中心</title> <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body{font-family:"Microsoft JhengHei",sans-serif;padding:15px;background:#fdfbf7;color:#5d4037;}
+        .header-btn {background:#fff; border:2px solid #e6d0a5; color:#8d6e63; width:100%; padding:15px; border-radius:10px; font-weight:bold; margin-bottom:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px;}
+        .card{background:#fff;padding:15px;margin-bottom:10px;border-radius:10px;box-shadow:0 2px 5px rgba(0,0,0,0.05); border-left:5px solid #e6d0a5;}
+        button{width:100%;padding:10px;background:#e6d0a5;color:#5d4037;border:none;border-radius:5px;margin-top:10px;font-weight:bold;cursor:pointer;}
+        .hidden{display:none}
+        .tab-bar{display:flex;margin-bottom:15px}
+        .tab{flex:1;text-align:center;padding:10px;background:#eee;cursor:pointer;color:#aaa}
+        .tab.active{background:#e6d0a5;color:#5d4037}
+    </style>
+</head>
+<body>
+    <div class="header-btn" onclick="location.href='https://liff.line.me/{{ liff_id }}?page=class_info'">
+        <span>📅 查看本月行事曆/課表</span>
+    </div>
+
+    <div class="tab-bar">
+        <div class="tab active" onclick="switchTab('list')">近期班程</div>
+        <div class="tab" onclick="switchTab('my')">我的報名</div>
+    </div>
+
+    <div id="listMode">載入中...</div>
+    <div id="myMode" class="hidden"></div>
+
+    <div id="modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);align-items:center;justify-content:center">
+        <div style="background:#fff;padding:25px;width:80%;border-radius:12px;text-align:center;">
+            <h3 id="mTitle" style="color:#5d4037"></h3>
+            <p style="color:#888;font-size:0.9rem;background:#f9f9f9;padding:10px;">系統將自動帶入您的個資 (姓名/電話/素食)</p>
+            <input type="text" id="mNote" placeholder="備註 (選填)" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;margin:10px 0;">
+            <button onclick="doSignup()">確認報名</button>
+            <button onclick="document.getElementById('modal').style.display='none'" style="background:#ddd;color:#888">取消</button>
+        </div>
+    </div>
+
+    <script>
+        var LIFF_ID="{{ liff_id }}", uid="", curClass={};
+        window.onload=()=>{
+            liff.init({liffId:LIFF_ID}).then(()=>{
+                if(!liff.isLoggedIn())liff.login();
+                liff.getProfile().then(p=>{ uid=p.userId; loadData(); });
+            });
+        }
+        function switchTab(t){
+            document.getElementById('listMode').classList.toggle('hidden',t!='list');
+            document.getElementById('myMode').classList.toggle('hidden',t!='my');
+            if(t=='my') loadMy();
+        }
+        function loadData(){
+            fetch('/api/classes').then(r=>r.json()).then(d=>{
+                var h='';
+                if(!d||d.length==0) h='<div style="text-align:center;color:#aaa">暫無班程</div>';
+                else d.forEach(c=>{
+                    h+=`<div class="card"><b>${c.name}</b><br><small>📅 ${c.date}</small>
+                    <button onclick="openModal('${c.name}','${c.date}')">立即報名</button></div>`;
+                });
+                document.getElementById('listMode').innerHTML=h;
+            });
+        }
+        function loadMy(){
+            fetch('/api/my_signups?user_id='+uid).then(r=>r.json()).then(d=>{
+                var h='';
+                if(!d||d.length==0) h='<div style="text-align:center;color:#aaa">無報名紀錄</div>';
+                else d.forEach(c=>{
+                    h+=`<div class="card" style="border-left-color:#8bc34a"><b>${c.name}</b><br><small>${c.date}</small>
+                    <button style="background:#ffccbc" onclick="cancel('${c.name}')">取消報名</button></div>`;
+                });
+                document.getElementById('myMode').innerHTML=h;
+            });
+        }
+        function openModal(n,d){ curClass={name:n,date:d}; document.getElementById('mTitle').innerText=n; document.getElementById('modal').style.display='flex'; }
+        function doSignup(){
+            var btn=document.querySelector('#modal button'); btn.disabled=true; btn.innerText="處理中...";
+            fetch('/api/register_class',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,class_name:curClass.name,class_date:curClass.date,note:document.getElementById('mNote').value})})
+            .then(r=>r.json()).then(res=>{ alert(res.message); if(res.success)document.getElementById('modal').style.display='none'; btn.disabled=false; btn.innerText="確認報名"; });
+        }
+        function cancel(n){
+            if(confirm('確定取消?')) fetch('/api/cancel_registration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,class_name:n})})
+            .then(r=>r.json()).then(res=>{ alert(res.message); loadMy(); });
+        }
+    </script>
+</body>
+</html>
