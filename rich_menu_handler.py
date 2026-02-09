@@ -1,123 +1,150 @@
-# rich_menu_handler.py
 import requests
 import json
 import os
-from PIL import Image
-import config
+from PIL import Image, ImageDraw, ImageFont
 
-# ================== 設定區 ==================
-# 請確認您的圖片放在 static 資料夾，且檔名正確
-STATIC_IMAGE_PATH = "static/rich_menu.jpg"
-# ===========================================
+# ================== 基本設定 ==================
+IMAGE_FILENAME = "rich_menu_generated.png"
+IMAGE_WIDTH = 2500
+IMAGE_HEIGHT = 1686 
+ICON_SIZE = 200
+FONT_SIZE = 130
 
-def create_rich_menu(menu_config):
-    """
-    使用靜態圖片建立 Rich Menu
-    """
-    settings = config.Settings()
-    token = settings.LINE_CHANNEL_ACCESS_TOKEN
-    
-    # 1. 檢查圖片是否存在
-    if not os.path.exists(STATIC_IMAGE_PATH):
-        print(f"❌ 找不到圖片！請確認 {STATIC_IMAGE_PATH} 檔案存在。")
-        return False, "找不到選單圖片"
+# ================== [風格調色盤：慧霖宮素雅風] ==================
+# 背景漸層：極淺米白 -> 溫暖木質金
+BG_GRADIENT_TOP = (255, 253, 245)    
+BG_GRADIENT_BOTTOM = (245, 222, 179) 
+
+# 文字顏色：深褐色
+TEXT_COLOR = (101, 67, 33)
+# 分隔線顏色：淡淡的金色
+LINE_COLOR = (210, 180, 140)
+# Icon 顏色
+ICON_COLOR = (101, 67, 33)
+
+# Icon 對應表 (使用您要的白話文)
+ICON_MAPPING = {
+    "了愿打卡": "\uf058",  # fa-check-circle
+    "班程報名": "\uf518",  # fa-book-reader
+    "故障申報": "\uf0ad",  # fa-wrench
+    "壇務佈告欄": "\uf51a", # fa-broom
+    "班程資訊": "\uf073",  # fa-calendar-alt
+    "個人設定": "\uf54b",  # fa-shoe-prints
+}
+
+def create_gradient_image(width, height, top_color, bottom_color):
+    base = Image.new('RGB', (width, height), top_color)
+    top = Image.new('RGB', (width, height), top_color)
+    bottom = Image.new('RGB', (width, height), bottom_color)
+    mask = Image.new('L', (width, height))
+    mask_data = []
+    for y in range(height):
+        mask_data.extend([int(255 * (y / height))] * width)
+    mask.putdata(mask_data)
+    base.paste(bottom, (0, 0), mask)
+    return base
+
+def draw_icon(draw, x, y, icon_char):
+    # 嘗試多種路徑找字型
+    font_paths = [
+        "static/fonts/fa-solid-900.ttf",
+        "static/fa-solid-900.ttf", 
+        "static/fonts/Font Awesome 6 Free-Solid-900.otf"
+    ]
+    font_path = None
+    for p in font_paths:
+        if os.path.exists(p):
+            font_path = p
+            break
+            
+    if not font_path:
+        print("⚠️ 找不到 Icon 字型檔，將略過繪製圖示")
+        return
 
     try:
-        # 2. 讀取圖片尺寸 (為了精準設定點擊區域)
-        with Image.open(STATIC_IMAGE_PATH) as img:
-            w, h = img.size
-            print(f"🖼️ 讀取到圖片尺寸: {w} x {h}")
-        
-        # 3. 定義 6 格按鈕的點擊區域 (2列 x 3行)
-        # 程式會自動根據您的圖片大小來計算切割位置
-        cols = 3
-        rows = 2
-        bw = w / cols
-        bh = h / rows
-        
-        areas = []
-        buttons = menu_config["buttons"]
-        
-        # 確保按鈕數量不超過 6 個
-        for i, btn in enumerate(buttons[:6]):
-            r, c = divmod(i, cols) # 計算是第幾列、第幾行
-            areas.append({
-                "bounds": {
-                    "x": int(c * bw),
-                    "y": int(r * bh),
-                    "width": int(bw),
-                    "height": int(bh),
-                },
-                "action": btn["action"],
-            })
+        font = ImageFont.truetype(font_path, ICON_SIZE)
+        draw.text((x, y), icon_char, font=font, fill=ICON_COLOR, anchor="mm")
+    except Exception as e:
+        print(f"繪製圖示錯誤: {e}")
 
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }
+def generate_rich_menu_image(menu_config):
+    img = create_gradient_image(IMAGE_WIDTH, IMAGE_HEIGHT, BG_GRADIENT_TOP, BG_GRADIENT_BOTTOM)
+    draw = ImageDraw.Draw(img)
 
-        # 4. 先刪除舊的同名選單 (避免重複累積)
+    btn_w = IMAGE_WIDTH / 2
+    btn_h = IMAGE_HEIGHT / 3
+    
+    # 畫分隔線
+    draw.line([(IMAGE_WIDTH/2, 0), (IMAGE_WIDTH/2, IMAGE_HEIGHT)], fill=LINE_COLOR, width=5)
+    draw.line([(0, IMAGE_HEIGHT/3), (IMAGE_WIDTH, IMAGE_HEIGHT/3)], fill=LINE_COLOR, width=5)
+    draw.line([(0, IMAGE_HEIGHT*2/3), (IMAGE_WIDTH, IMAGE_HEIGHT*2/3)], fill=LINE_COLOR, width=5)
+
+    # 找中文字型
+    font_path = "static/fonts/NotoSansTC-Bold.otf"
+    if not os.path.exists(font_path): font_path = "static/fonts/msjhbd.ttc" # Windows 備用
+    
+    try:
+        font = ImageFont.truetype(font_path, FONT_SIZE)
+    except:
+        font = ImageFont.load_default()
+
+    centers = [
+        (btn_w * 0.5, btn_h * 0.5), (btn_w * 1.5, btn_h * 0.5),
+        (btn_w * 0.5, btn_h * 1.5), (btn_w * 1.5, btn_h * 1.5),
+        (btn_w * 0.5, btn_h * 2.5), (btn_w * 1.5, btn_h * 2.5)
+    ]
+
+    for i, btn in enumerate(menu_config["buttons"]):
+        if i >= 6: break
+        label = btn["label"]
+        cx, cy = centers[i]
+        
+        icon_char = ICON_MAPPING.get(label, "")
+        if icon_char:
+            draw_icon(draw, cx, cy - 80, icon_char)
+            
+        draw.text((cx, cy + 100), label, font=font, fill=TEXT_COLOR, anchor="mm")
+
+    draw.rectangle([0, 0, IMAGE_WIDTH-1, IMAGE_HEIGHT-1], outline=LINE_COLOR, width=15)
+    img.save(IMAGE_FILENAME)
+    return IMAGE_FILENAME
+
+def create_and_set_rich_menu(token, menu_config):
+    try:
+        generate_rich_menu_image(menu_config)
+        
+        w, h = IMAGE_WIDTH, IMAGE_HEIGHT
+        cw, ch = int(w / 2), int(h / 3)
+        
+        areas = [
+            {"bounds": {"x": 0, "y": 0, "width": cw, "height": ch}, "action": menu_config["buttons"][0]["action"]},
+            {"bounds": {"x": cw, "y": 0, "width": cw, "height": ch}, "action": menu_config["buttons"][1]["action"]},
+            {"bounds": {"x": 0, "y": ch, "width": cw, "height": ch}, "action": menu_config["buttons"][2]["action"]},
+            {"bounds": {"x": cw, "y": ch, "width": cw, "height": ch}, "action": menu_config["buttons"][3]["action"]},
+            {"bounds": {"x": 0, "y": ch*2, "width": cw, "height": ch}, "action": menu_config["buttons"][4]["action"]},
+            {"bounds": {"x": cw, "y": ch*2, "width": cw, "height": ch}, "action": menu_config["buttons"][5]["action"]},
+        ]
+
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        
+        # 刪除舊選單
         try:
-            old_menus = requests.get("https://api.line.me/v2/bot/richmenu/list", headers=headers).json()
-            for m in old_menus.get("richmenus", []):
+            old = requests.get("https://api.line.me/v2/bot/richmenu/list", headers=headers).json()
+            for m in old.get("richmenus", []):
                 if m["name"] == menu_config["name"]:
-                    print(f"🗑️ 刪除舊選單: {m['richMenuId']}")
                     requests.delete(f"https://api.line.me/v2/bot/richmenu/{m['richMenuId']}", headers=headers)
-        except Exception as e:
-            print(f"⚠️ 清理舊選單時發生小錯誤 (不影響): {e}")
+        except: pass
 
-        # 5. 上傳選單設定 (JSON)
-        body = {
-            "size": {"width": w, "height": h},
-            "selected": True,
-            "name": menu_config["name"],
-            "chatBarText": menu_config["chatBarText"],
-            "areas": areas,
-        }
-
-        res = requests.post(
-            "https://api.line.me/v2/bot/richmenu",
-            headers=headers,
-            data=json.dumps(body),
-        )
-
-        if res.status_code != 200:
-            return False, f"建立選單物件失敗: {res.text}"
+        body = {"size": {"width": w, "height": h}, "selected": True, "name": menu_config["name"], "chatBarText": menu_config["chatBarText"], "areas": areas}
+        res = requests.post("https://api.line.me/v2/bot/richmenu", headers=headers, json=body)
+        if res.status_code != 200: return
 
         rich_menu_id = res.json()["richMenuId"]
-        print(f"✅ 選單物件建立成功 ID: {rich_menu_id}")
-
-        # 6. 上傳圖片檔案
-        with open(STATIC_IMAGE_PATH, "rb") as f:
-            # 判斷是 png 還是 jpg
-            content_type = "image/png" if STATIC_IMAGE_PATH.endswith(".png") else "image/jpeg"
-            
-            upload_res = requests.post(
-                f"https://api-data.line.me/v2/bot/richmenu/{rich_menu_id}/content",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": content_type,
-                },
-                data=f,
-            )
-
-        if upload_res.status_code != 200:
-            return False, f"上傳圖片失敗: {upload_res.text}"
-
-        # 7. 設定為預設選單
-        default_res = requests.post(
-            f"https://api.line.me/v2/bot/user/all/richmenu/{rich_menu_id}",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-
-        if default_res.status_code != 200:
-            return False, f"設定預設失敗: {default_res.text}"
-
-        return True, "🎉 Rich Menu 圖片上傳成功！"
+        with open(IMAGE_FILENAME, "rb") as f:
+            requests.post(f"https://api-data.line.me/v2/bot/richmenu/{rich_menu_id}/content", headers={"Authorization": f"Bearer {token}", "Content-Type": "image/png"}, data=f)
+        
+        requests.post(f"https://api.line.me/v2/bot/user/all/richmenu/{rich_menu_id}", headers=headers)
+        print("🎉 選單更新完成！")
 
     except Exception as e:
-        return False, f"系統錯誤: {e}"
-
-def delete_rich_menu(rich_menu_id):
-    # 保留這個函式以免 main.py 報錯
-    pass
+        print(f"❌ 選單錯誤: {e}")
