@@ -1,43 +1,47 @@
 import os
-import sys
-from flask import Flask
+import atexit
 from config import Settings
 from app import create_app
+import line_bot_logic
 import rich_menu_handler
+from rich.console import Console
+
+console = Console()
 
 def init_full_application():
     settings = Settings()
-    app = create_app()
+    line_bot_logic.init_bot(settings)
     
-    # 更新選單連結
+    # 建立「慧霖宮」專屬選單
+    menu_name = "HuiLinGong_Menu_V3"
     liff_base = f"https://liff.line.me/{settings.LIFF_ID}"
+    
     menu_config = {
-        "name": "公堂運作選單",
-        "chatBarText": "開啟選單",
+        "name": menu_name,
+        "chatBarText": "開啟慧霖宮小幫手",
         "buttons": [
+            # 第一排
             {"label": "了愿打卡", "action": {"type": "uri", "uri": f"{liff_base}?page=checkin"}},
             {"label": "班程報名", "action": {"type": "uri", "uri": f"{liff_base}?page=class_center"}},
+            # 第二排 (順序已更換：故障在左，壇務在右)
             {"label": "故障申報", "action": {"type": "uri", "uri": f"{liff_base}?page=fix"}},
-            {"label": "個人設定", "action": {"type": "uri", "uri": f"{liff_base}?page=settings"}},
-            {"label": "本週輪值", "action": {"type": "uri", "uri": f"{liff_base}?page=duty"}},
-            {"label": "班程資訊", "action": {"type": "uri", "uri": f"{liff_base}?page=class_info"}}
+            {"label": "壇務佈告欄", "action": {"type": "uri", "uri": f"{liff_base}?page=duty"}},
+            # 第三排
+            {"label": "班程資訊", "action": {"type": "uri", "uri": f"{liff_base}?page=class_info"}},
+            {"label": "個人設定", "action": {"type": "uri", "uri": f"{liff_base}?page=settings"}}
         ]
     }
     
-    # 啟動時建立選單 (已修正為只傳一個參數)
-    rich_menu_handler.create_rich_menu(menu_config)
-
-    print(f"🚀 伺服器啟動於 port {settings.PORT}")
+    # 自動更新選單
+    rich_menu_handler.create_and_set_rich_menu(
+        settings.LINE_CHANNEL_ACCESS_TOKEN,
+        menu_config
+    )
     
-    # [關鍵修改] 這裡不要啟動 waitress，直接回傳 app 給 Gunicorn 使用
-    return app, "Init Success"
+    app = create_app()
+    return app, settings
 
-if __name__ == '__main__':
-    # 只有在本機直接執行此檔案時，才使用 waitress
-    app, _ = init_full_application()
-    try:
-        from waitress import serve
-        serve(app, host='0.0.0.0', port=Settings().PORT)
-    except ImportError:
-        # 如果本機沒裝 waitress，就用 Flask 內建 server (方便測試)
-        app.run(host='0.0.0.0', port=Settings().PORT)
+app, settings = init_full_application()
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=settings.PORT)
