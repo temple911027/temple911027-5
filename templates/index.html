@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公堂運作小幫手</title>
+    <style>
+        body {
+            background-color: #f9fafb;
+            font-family: sans-serif;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            height: 100vh; margin: 0; text-align: center; color: #374151;
+        }
+        .card {
+            background: white; padding: 2rem; border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 90%; max-width: 320px;
+        }
+        .icon-box {
+            width: 80px; height: 80px; background-color: #dbeafe; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;
+            position: relative;
+        }
+        .loader {
+            position: absolute; top: -4px; left: -4px; right: -4px; bottom: -4px;
+            border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .title { font-size: 1.5rem; font-weight: bold; margin: 0; }
+        .subtitle { font-size: 1.25rem; font-weight: bold; color: #1e40af; margin: 0.5rem 0; }
+        .desc { color: #3b82f6; margin-bottom: 1.5rem; }
+        .status { color: #6b7280; margin-bottom: 1.5rem; }
+    </style>
+
+    <!-- [關鍵優化] 立即執行路由檢查，完全不依賴外部資源 -->
+    <script>
+        (function() {
+            // 1. 取得網址參數
+            var urlParams = new URLSearchParams(window.location.search);
+            var page = urlParams.get('page');
+            var liffState = urlParams.get('liff.state');
+
+            // 2. 嘗試解析 liff.state (如果 page 不存在)
+            if (!page && liffState) {
+                try {
+                    // 處理可能的多重編碼
+                    var decoded = decodeURIComponent(liffState);
+                    // 移除開頭的 ? (如果有)
+                    if (decoded.indexOf('?') === 0) decoded = decoded.substring(1);
+
+                    var stateParams = new URLSearchParams(decoded);
+                    page = stateParams.get('page');
+                } catch (e) { console.error(e); }
+            }
+
+            // 3. 如果確定要跳轉，將目標存入全域變數
+            if (page && page !== 'index') {
+                window.targetPage = page;
+            }
+        })();
+    </script>
+</head>
+<body>
+
+    <div class="card">
+        <div class="icon-box">
+            <span style="font-size: 2.5rem;">🙏</span>
+            <div class="loader" id="loading-spinner"></div>
+        </div>
+        <h1 class="title">歡迎使用</h1>
+        <h2 class="subtitle">長聖佛宮</h2>
+        <h3 class="desc">公堂運作小幫手</h3>
+        <div class="status" id="status-text">系統載入中...</div>
+    </div>
+
+    <script>
+        // 頁面顯示邏輯
+        var page = window.targetPage;
+        var statusText = document.getElementById('status-text');
+
+        function getPageName(p) {
+            var map = {
+                'checkin': '了愿打卡',
+                'fix': '故障申報',
+                'query': '資料查詢',
+                'class_info': '班程資訊',
+                'help': '系統說明'
+            };
+            return map[p] || '功能頁面';
+        }
+
+        if (page) {
+            // === 情況 A: 需要跳轉 ===
+            // 顯示目標，並立即跳轉，不載入 LIFF SDK (節省時間)
+            statusText.innerText = "正在前往：" + getPageName(page);
+
+            // 延遲 100ms 讓瀏覽器有機會渲染出上面的 HTML 文字，然後立刻跳
+            setTimeout(function() {
+                window.location.replace('/liff?page=' + page);
+            }, 100);
+
+        } else {
+            // === 情況 B: 停留在首頁 (沒有參數) ===
+            // 這時候才需要載入 LIFF SDK
+            document.getElementById('loading-spinner').style.display = 'none';
+            statusText.innerHTML = "系統已就緒。<br>請點選下方選單操作。";
+
+            // 動態載入 LIFF SDK (不阻塞)
+            var script = document.createElement('script');
+            script.src = "https://static.line-scdn.net/liff/edge/2/sdk.js";
+            script.onload = function() {
+                var liffId = "{{ liff_id }}";
+                if(typeof liff !== 'undefined' && liffId) {
+                    liff.init({ liffId: liffId }).catch(err => console.error(err));
+                }
+            };
+            document.head.appendChild(script);
+        }
+    </script>
+</body>
+</html>

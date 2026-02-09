@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>班程資訊</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body { background-color: #f8f9fa; font-family: "Microsoft JhengHei", sans-serif; }
+        .header-bar { background-color: #005C97; color: white; }
+
+        .btn-custom {
+            background-color: #007bff;
+            color: white;
+            transition: transform 0.1s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .btn-custom:active {
+            transform: scale(0.98);
+            background-color: #0069d9;
+        }
+
+        .modal-overlay {
+            background-color: rgba(0,0,0,0.9);
+            transition: opacity 0.3s ease;
+        }
+
+        /* 圖片輪播樣式 */
+        .image-scroll-container {
+            display: flex;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+            height: 80vh;
+            width: 100%;
+            align-items: center;
+        }
+        .image-scroll-container::-webkit-scrollbar {
+            display: none;
+        }
+        .snap-item {
+            scroll-snap-align: center;
+            flex-shrink: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .snap-item img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-bar p-4 flex justify-between items-center shadow-md sticky top-0 z-50">
+        <h1 class="text-xl font-bold">班程資訊</h1>
+        <div class="text-white text-lg font-bold cursor-pointer px-2" onclick="liff.closeWindow()">×</div>
+    </div>
+
+    <div class="container mx-auto px-4 py-6 max-w-md">
+
+        {# --- [邏輯區塊] 分類按鈕 --- #}
+        {% set top_btns = [] %}
+        {% set grid_btns = [] %}
+
+        {% if ssr_buttons %}
+            {% set top_btns = ssr_buttons | selectattr("pos", "equalto", "TOP") | list %}
+            {% set grid_btns = ssr_buttons | rejectattr("pos", "equalto", "TOP") | list %}
+        {% endif %}
+
+        <!-- SSR 渲染區：上方大按鈕 (TOP) -->
+        {% if top_btns %}
+        <div id="top-btn-container" class="mb-4">
+            {% for btn in top_btns %}
+                <div class="w-full cursor-pointer transform active:scale-95 transition duration-150"
+                        {# [修改重點] 新增 QUERY_RESULT 判斷 #}
+                        {% if btn.type == 'LINK' %} onclick="openLink('{{ btn.value }}')"
+                        {% elif btn.type == 'QUERY_RESULT' %} onclick="openPage('query_result')"
+                        {% elif btn.type == 'PAGE' %} onclick="openPage('{{ btn.value }}')"
+                        {% elif btn.type == 'IMAGE' %} onclick="openImage('{{ btn.value }}')"
+                        {% elif btn.type == 'TEXT' %} onclick="openText('{{ btn.label | replace('\n', '') }}', '{{ btn.value | replace('\n', '\\n') | replace('\'', '\\\'') }}')"
+                        {% endif %}>
+                    <div class="btn-custom py-4 px-4 rounded-xl text-center flex justify-center items-center">
+                        <span class="text-2xl mr-3">🔍</span>
+                        <p class="font-bold text-xl tracking-wide">
+                            {{ btn.label | replace('\\n', '<br>') | safe }}
+                        </p>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- SSR 渲染區：九宮格按鈕 (其他位置) -->
+        {% if grid_btns %}
+        <div id="grid-btn-container" class="grid grid-cols-3 gap-2 mb-6">
+            {% for btn in grid_btns %}
+                <div class="w-full h-full cursor-pointer transform active:scale-95 transition duration-150"
+                        {# [修改重點] 新增 QUERY_RESULT 判斷 #}
+                        {% if btn.type == 'LINK' %} onclick="openLink('{{ btn.value }}')"
+                        {% elif btn.type == 'QUERY_RESULT' %} onclick="openPage('query_result')"
+                        {% elif btn.type == 'PAGE' %} onclick="openPage('{{ btn.value }}')"
+                        {% elif btn.type == 'IMAGE' %} onclick="openImage('{{ btn.value }}')"
+                        {% elif btn.type == 'TEXT' %} onclick="openText('{{ btn.label | replace('\n', '') }}', '{{ btn.value | replace('\n', '\\n') | replace('\'', '\\\'') }}')"
+                        {% endif %}>
+                    <div class="btn-custom py-2 px-1 rounded-xl text-center h-full flex flex-col justify-center items-center min-h-[100px]">
+                        <p class="font-bold text-[17px] leading-snug break-words px-1">
+                            {{ btn.label | replace('\\n', '<br>') | safe }}
+                        </p>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="bg-white rounded-lg shadow-md p-6 border-l-8 border-pink-500">
+            <div class="flex items-center mb-4">
+                <span class="text-pink-600 text-2xl mr-2">📢</span>
+                <h2 class="text-xl font-bold text-gray-800">事務性工作了愿提醒：</h2>
+            </div>
+
+            <!-- SSR 渲染區：班程列表 -->
+            <div id="class-list" class="space-y-4">
+                {% if ssr_classes %}
+                    {% for item in ssr_classes %}
+                        <div class="border-b border-gray-100 pb-3 mb-2 last:border-0">
+                            <div class="flex justify-between items-baseline mb-1">
+                                <span class="text-blue-700 font-bold text-lg tracking-wide">{{ item.date }}</span>
+                                <span class="text-gray-900 font-bold text-lg text-right">{{ item.name }}</span>
+                            </div>
+                            <div class="{{ 'text-gray-700 font-medium whitespace-pre-line' if item.work else 'text-gray-400 italic text-sm' }} pl-1">
+                                {{ item.work if item.work else '無特定事務工作' }}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <!-- 如果沒有資料，顯示預設訊息 -->
+                    <p class="text-center text-gray-500 py-2">目前沒有即將到來的班程。</p>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 圖片 Modal -->
+    <div id="image-modal" class="fixed inset-0 modal-overlay hidden flex justify-center items-center z-50" onclick="closeModal('image-modal')">
+        <div class="relative w-full max-w-4xl h-full flex flex-col justify-center" onclick="event.stopPropagation()">
+            <button class="absolute top-4 right-4 text-white text-3xl font-bold z-50 bg-black bg-opacity-40 rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-60" onclick="closeModal('image-modal')">&times;</button>
+            <button id="prev-btn" class="absolute left-2 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-30 hover:bg-opacity-50 rounded-full w-12 h-12 flex items-center justify-center z-40 transition hidden" onclick="scrollGallery(-1)">&#10094;</button>
+            <button id="next-btn" class="absolute right-2 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-30 hover:bg-opacity-50 rounded-full w-12 h-12 flex items-center justify-center z-40 transition hidden" onclick="scrollGallery(1)">&#10095;</button>
+            <div id="modal-img-container" class="image-scroll-container"></div>
+            <div id="img-counter" class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-sm font-bold hidden">1 / 1</div>
+        </div>
+    </div>
+
+    <!-- 文字 Modal -->
+    <div id="text-modal" class="fixed inset-0 modal-overlay hidden flex justify-center items-center z-50" onclick="closeModal('text-modal')">
+        <div class="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl relative" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h3 id="modal-text-title" class="text-xl font-bold text-gray-800 text-center flex-1">公告資訊</h3>
+                <button onclick="closeModal('text-modal')" class="text-gray-400 hover:text-gray-700 text-3xl leading-none">&times;</button>
+            </div>
+            <div id="modal-text-content" class="text-gray-700 text-lg whitespace-pre-line leading-relaxed min-h-[100px]"></div>
+            <div class="mt-6 text-center">
+                <button onclick="closeModal('text-modal')" class="bg-blue-600 text-white px-8 py-2 rounded-full hover:bg-blue-700 font-bold shadow-lg">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var liffId = "{{ liff_id }}";
+            if (liffId) {
+                liff.init({ liffId: liffId }).catch((err) => {
+                    console.error('LIFF Error', err);
+                });
+            }
+
+            const imgContainer = document.getElementById('modal-img-container');
+            if(imgContainer) imgContainer.addEventListener('scroll', updateCounterOnScroll);
+        });
+
+        // 外部連結 (跳出 LINE)
+        function openLink(url) {
+            if (!url || url === '#' || url === 'undefined') return;
+            if (liff.isInClient()) {
+                liff.openWindow({ url: url, external: true });
+            } else {
+                window.open(url, '_blank');
+            }
+        }
+
+        // [新增] 內部頁面跳轉 (保留在 LINE 內)
+        function openPage(pageParam) {
+            if (!pageParam || pageParam === '#' || pageParam === 'undefined') return;
+
+            // 如果傳入的是完整網址，直接轉址
+            if (pageParam.startsWith('http')) {
+                window.location.href = pageParam;
+            } else {
+                // 如果只是參數 (例如: query_result)，自動組合成 ?page=query_result
+                window.location.href = `?page=${pageParam}`;
+            }
+        }
+
+        function openImage(urlStr) {
+            if (!urlStr || urlStr === '#' || urlStr === 'undefined') return;
+
+            const container = document.getElementById('modal-img-container');
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const counter = document.getElementById('img-counter');
+
+            container.innerHTML = '';
+            const urls = urlStr.split(',').map(u => u.trim()).filter(u => u);
+
+            urls.forEach((url, index) => {
+                const div = document.createElement('div');
+                div.className = 'snap-item';
+                div.innerHTML = `<img src="${url}" alt="Image ${index + 1}" referrerpolicy="no-referrer">`;
+                container.appendChild(div);
+            });
+
+            if (urls.length > 1) {
+                prevBtn.classList.remove('hidden');
+                nextBtn.classList.remove('hidden');
+                counter.classList.remove('hidden');
+                counter.innerText = `1 / ${urls.length}`;
+            } else {
+                prevBtn.classList.add('hidden');
+                nextBtn.classList.add('hidden');
+                counter.classList.add('hidden');
+            }
+
+            document.getElementById('image-modal').classList.remove('hidden');
+        }
+
+        function scrollGallery(direction) {
+            const container = document.getElementById('modal-img-container');
+            const width = container.offsetWidth;
+            container.scrollBy({ left: direction * width, behavior: 'smooth' });
+        }
+
+        function updateCounterOnScroll() {
+            const container = document.getElementById('modal-img-container');
+            const width = container.offsetWidth;
+            const scrollLeft = container.scrollLeft;
+            const index = Math.round(scrollLeft / width) + 1;
+            const total = container.children.length;
+
+            if (total > 1) {
+                document.getElementById('img-counter').innerText = `${index} / ${total}`;
+            }
+        }
+
+        function openText(title, content) {
+            if (!content || content === 'undefined') return;
+            document.getElementById('modal-text-title').innerText = title;
+            document.getElementById('modal-text-content').innerText = content;
+            document.getElementById('text-modal').classList.remove('hidden');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

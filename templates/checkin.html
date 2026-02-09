@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公堂打卡系統</title>
+    <!-- 引入 SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- 引入 LIFF SDK -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <style>
+        body {
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: "Microsoft JhengHei", sans-serif;
+        }
+        .loading-container {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-width: 80%;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #e0e0e0;
+            border-top: 5px solid #005c97;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .text {
+            color: #333;
+            font-weight: bold;
+            font-size: 1.3rem;
+            margin-bottom: 5px;
+        }
+        .status-text {
+            margin-top: 10px;
+            font-size: 0.95rem;
+            color: #666;
+        }
+        .category-badge {
+            display: inline-block;
+            background-color: #e3f2fd;
+            color: #0d47a1;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="loading-container">
+        <!-- 顯示類別的標籤 -->
+        <div id="category-display" class="category-badge">讀取中...</div>
+
+        <div class="spinner"></div>
+        <div class="text" id="main-title">位置確認中...</div>
+
+        <!-- [修正] 移除了歡迎詞顯示區塊 -->
+
+        <div class="status-text" id="status-msg">請允許定位權限</div>
+    </div>
+
+<script>
+    const LIFF_ID = "{{ liff_id }}";
+    // 1. 取得網址上的 item 參數，預設為 "公堂運作"
+    const urlParams = new URLSearchParams(window.location.search);
+    const category = urlParams.get('item') || '公堂運作';
+
+    // 2. 頁面載入時，立即更新標題與顯示文字
+    document.title = `${category} - 打卡系統`;
+    document.getElementById('category-display').innerText = category;
+    document.getElementById('main-title').innerHTML = `正在確認<br>您的位置`;
+
+    function initializeLiff() {
+        liff.init({ liffId: LIFF_ID })
+            .then(() => {
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                } else {
+                    // 開始定位流程
+                    getLocationAndCheckIn();
+                }
+            })
+            .catch((err) => {
+                showError("系統錯誤", "LIFF 初始化失敗：" + err.message);
+            });
+    }
+
+    function getLocationAndCheckIn() {
+        if (!navigator.geolocation) {
+            showError("無法定位", "您的瀏覽器不支援地理位置功能，無法打卡。");
+            return;
+        }
+
+        document.getElementById('status-msg').innerText = "定位衛星搜尋中...";
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                // 取得座標後，執行打卡
+                performCheckIn(lat, lng);
+            },
+            (error) => {
+                let msg = "無法取得您的位置。";
+                if (error.code == 1) msg = "請允許取用位置權限才能打卡。";
+                else if (error.code == 2) msg = "無法偵測目前位置(GPS訊號弱)。";
+                else if (error.code == 3) msg = "定位逾時，請檢查網路或移動至戶外。";
+
+                showError("定位失敗", msg + "\n(需在公堂附近)");
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }
+
+    function performCheckIn(lat, lng) {
+        document.getElementById('status-msg').innerText = "正在傳送打卡資訊...";
+
+        // 組合訊息：#打卡 [項目] [lat,lng]
+        const messageText = `#打卡 ${category} 座標:${lat},${lng}`;
+
+        liff.sendMessages([{
+            type: 'text',
+            text: messageText
+        }]).then(() => {
+            // 成功後顯示
+            document.querySelector('.loading-container').innerHTML = `
+                <div style="color: green; font-size: 3rem; margin-bottom: 20px;">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h3 style="color: #2e7d32;">請求已發送</h3>
+                <p style="color: #555;">正在與公堂資料庫比對位置...</p>
+            `;
+
+            Swal.fire({
+                icon: 'success',
+                title: '打卡請求已送出',
+                text: `類別：${category}`,
+                timer: 1500,
+                showConfirmButton: false
+            }).then(() => {
+                liff.closeWindow();
+            });
+        }).catch((err) => {
+            showError("傳送失敗", "請確認網路連線。");
+        });
+    }
+
+    function showError(title, msg) {
+        Swal.fire({
+            icon: 'error',
+            title: title,
+            text: msg,
+            confirmButtonText: '關閉'
+        }).then(() => {
+            liff.closeWindow();
+        });
+    }
+
+    initializeLiff();
+</script>
+
+</body>
+</html>

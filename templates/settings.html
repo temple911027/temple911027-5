@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人設定</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body{padding:15px;font-family:sans-serif}
+        label{display:block;margin-top:10px;font-weight:bold}
+        input,select{width:100%;padding:10px;margin-top:5px;box-sizing:border-box;border:1px solid #ccc;border-radius:5px;}
+        button{width:100%;padding:12px;margin-top:20px;background:#28a745;color:#fff;border:none;border-radius:5px}
+        .readonly{background:#eee;color:#555;cursor:not-allowed;}
+        .admin{border:2px dashed orange;padding:15px;margin-top:30px;display:none;background:#fff3e0;border-radius:10px;}
+    </style>
+</head>
+<body>
+    <h3 style="border-bottom:2px solid #eee;padding-bottom:10px;">⚙️ 個人設定</h3>
+    
+    <label>姓名 (唯讀)</label><input type="text" id="name" class="readonly" disabled>
+    <label>組別 (唯讀)</label><input type="text" id="group" class="readonly" disabled>
+    
+    <label>聯絡電話</label><input type="tel" id="phone" placeholder="班程報名自動帶入">
+    <label>用餐習慣</label><select id="meal"><option value="素食">素食</option><option value="葷食">葷食</option></select>
+    <label>每月了愿目標</label><input type="number" id="goal">
+    
+    <button onclick="save()">💾 儲存設定</button>
+
+    <div id="adminZone" class="admin">
+        <h4 style="margin-top:0;color:#e65100;">👑 幹部專區</h4>
+        <label>新增工作項目</label>
+        <div style="display:flex;gap:10px;">
+            <input type="text" id="newTask" placeholder="輸入名稱">
+            <button style="background:orange;width:30%;margin-top:5px;" onclick="addTask()">新增</button>
+        </div>
+    </div>
+
+    <script>
+        var LIFF_ID="{{ liff_id }}", uid="";
+        window.onload=()=>{
+            liff.init({liffId:LIFF_ID}).then(()=>{
+                if(!liff.isLoggedIn())liff.login();
+                liff.getProfile().then(p=>{
+                    uid=p.userId;
+                    fetch('/api/profile?user_id='+uid).then(r=>r.json()).then(d=>{
+                        if(d.error) return alert('請先註冊或完成第一次打卡');
+                        document.getElementById('name').value=d.name;
+                        document.getElementById('group').value=d.group;
+                        document.getElementById('phone').value=d.phone;
+                        document.getElementById('meal').value=d.meal;
+                        document.getElementById('goal').value=d.goal;
+                        if(["小組長","組長","管理員","區道務部"].includes(d.role)) document.getElementById('adminZone').style.display='block';
+                    });
+                });
+            });
+        }
+        function save(){
+            var d={user_id:uid, phone:document.getElementById('phone').value, meal:document.getElementById('meal').value, goal:document.getElementById('goal').value};
+            fetch('/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})
+            .then(r=>r.json()).then(res=>alert(res.message));
+        }
+        function addTask(){
+            var t=document.getElementById('newTask').value;
+            if(!t)return;
+            fetch('/api/leader/add_task',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,task_name:t})})
+            .then(r=>r.json()).then(res=>{ alert(res.message); document.getElementById('newTask').value=''; });
+        }
+    </script>
+</body>
+</html>

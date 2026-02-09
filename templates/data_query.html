@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>了愿資料查詢</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        body { background-color: #f4f6f9; padding-bottom: 40px; font-family: "Microsoft JhengHei", sans-serif; }
+        .dashboard-card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); background: white; margin-bottom: 20px; overflow: hidden; }
+        .card-header-blue { background: linear-gradient(135deg, #005c97 0%, #363795 100%); color: white; padding: 20px; text-align: center; }
+        .stat-number { font-size: 2.5rem; font-weight: bold; color: #005c97; }
+        .stat-label { color: #6c757d; font-size: 0.9rem; }
+        .progress { height: 25px; border-radius: 15px; background-color: #e9ecef; margin: 15px 0; }
+        .progress-bar { font-size: 0.9rem; line-height: 25px; background-color: #28a745; transition: width 1s ease-in-out; }
+
+        /* 人員列表樣式 */
+        .member-item { border-bottom: 1px solid #eee; padding: 15px; display: flex; justify-content: space-between; align-items: center; animation: fadeIn 0.3s; }
+        .member-item:last-child { border-bottom: none; }
+        .member-info { flex-grow: 1; }
+        .member-stat { text-align: right; }
+
+        /* 公堂標題樣式 */
+        .hall-header {
+            margin-top: 20px;
+            margin-bottom: 10px;
+            padding-left: 5px;
+            font-weight: bold;
+            color: #6c757d;
+            font-size: 1rem;
+            border-left: 4px solid #005c97;
+            line-height: 1.2;
+        }
+
+        /* 組別按鈕樣式 */
+        .group-btn {
+            display: flex; justify-content: space-between; align-items: center;
+            width: 100%; padding: 15px 20px; margin-bottom: 10px;
+            border: 1px solid #e0e0e0; border-radius: 10px;
+            background: white; color: #333; text-decoration: none;
+            transition: 0.2s; cursor: pointer;
+        }
+        .group-btn:hover { background-color: #f8f9fa; border-color: #005c97; transform: translateY(-2px); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .group-name { font-weight: bold; font-size: 1.1rem; color: #005c97; }
+        .group-count { font-size: 0.9rem; color: #666; background: #e9ecef; padding: 2px 8px; border-radius: 20px; }
+
+        .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: white; display: flex; justify-content: center; align-items: center; z-index: 9999; flex-direction: column; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<!-- 只有當沒有 SSR 資料時，才顯示 Loading 遮罩 -->
+<div id="loading-screen" class="loading-overlay" {% if ssr_data %}style="display: none;"{% endif %}>
+    <div class="spinner-border text-primary" role="status"></div>
+    <div class="mt-3 text-secondary">正在讀取雲端資料...</div>
+</div>
+
+<div class="container mt-3" style="max-width: 600px;">
+
+    <!-- 1. 個人儀表板 -->
+    <div class="dashboard-card">
+        <div class="card-header-blue">
+            <h4 class="mb-0" id="user-title">{{ ssr_data.name + ' 前賢' if ssr_data else '個人儀表板' }}</h4>
+            <div class="mt-2">
+                <span id="user-role" class="badge bg-warning text-dark">
+                    {{ (ssr_data.group + ' | ' + ssr_data.role) if ssr_data else '載入中...' }}
+                </span>
+            </div>
+        </div>
+        <div class="card-body text-center p-4">
+            <div class="row">
+                <div class="col-6 border-end">
+                    <div class="stat-number" id="actual-count">{{ ssr_data.actual if ssr_data else '0' }}</div>
+                    <div class="stat-label">本月已了愿</div>
+                </div>
+                <div class="col-6">
+                    <div class="stat-number" id="target-count">{{ ssr_data.target if ssr_data else '0' }}</div>
+                    <div class="stat-label">每月目標</div>
+                </div>
+            </div>
+            <div class="progress mt-4">
+                <div id="progress-bar"
+                     class="progress-bar {{ 'bg-success' if ssr_percent >= 100 else 'bg-info' if ssr_percent >= 50 else 'bg-warning' }}"
+                     role="progressbar"
+                     style="width: {{ ssr_percent if ssr_percent else 0 }}%">
+                     {{ ssr_percent if ssr_percent else 0 }}%
+                </div>
+            </div>
+            <div class="alert alert-info mt-3 mb-0" id="message-box">
+                <i class="fas fa-heart me-2"></i><span id="encouragement">{{ ssr_data.message if ssr_data else '讀取中...' }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 設定目標 -->
+    <div class="dashboard-card">
+        <div class="card-body">
+            <h6 class="card-title fw-bold text-secondary"><i class="fas fa-edit me-2"></i>調整目標</h6>
+            <div class="input-group mt-3">
+                <input type="number" id="new-goal" class="form-control" placeholder="輸入每月參與公堂運作的目標次數">
+                <button class="btn btn-outline-primary" onclick="updateGoal()">更新</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 管理看板 (SSR 直接渲染) -->
+    <div class="dashboard-card" id="admin-panel" {% if not ssr_data or not ssr_data.managed_members %}style="display: none;"{% endif %}>
+        <div class="card-header bg-light border-bottom d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-bold text-secondary"><i class="fas fa-chart-line me-2"></i>公堂運作月出席率</h6>
+            <button id="btn-back" class="btn btn-sm btn-outline-secondary" style="display:none" onclick="showGroupSelector()">
+                <i class="fas fa-arrow-left me-1"></i>返回列表
+            </button>
+        </div>
+
+        <div class="card-body p-4" id="group-selector" style="display: none;">
+            <!-- JS 動態生成 -->
+        </div>
+
+        <div class="card-body p-0" id="member-list" style="display: none;">
+            <!-- JS 動態生成 -->
+        </div>
+    </div>
+
+</div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+    const LIFF_ID = "{{ liff_id }}";
+    // 如果後端有傳來資料，先轉成 JS 物件
+    let ssrData = {{ ssr_data | tojson | safe if ssr_data else 'null' }};
+    let allMembers = [];
+    let groupedMembers = {}; // 用於儲存分類後的成員名單 key: "HALL_GROUP"
+
+    function initializeLiff() {
+        liff.init({ liffId: LIFF_ID }).then(() => {
+            if (ssrData) {
+                renderDashboard(ssrData);
+            } else {
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                } else {
+                    fetchData();
+                }
+            }
+        }).catch(err => {
+            if(ssrData) renderDashboard(ssrData);
+            else {
+                alert("初始化失敗: " + err);
+                document.getElementById('loading-screen').style.display = 'none';
+            }
+        });
+    }
+
+    function fetchData() {
+        liff.getProfile().then(profile => {
+            const userId = profile.userId;
+            fetch(`/api/query_data?user_id=${userId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if(data.error) {
+                        Swal.fire("錯誤", "找不到您的資料，請先註冊。", "error");
+                        document.getElementById('loading-screen').style.display = 'none';
+                        return;
+                    }
+                    renderDashboard(data);
+                    document.getElementById('loading-screen').style.display = 'none';
+                })
+                .catch(err => {
+                    console.error(err);
+                    Swal.fire("連線錯誤", "無法讀取資料", "error");
+                    document.getElementById('loading-screen').style.display = 'none';
+                });
+        });
+    }
+
+    function renderDashboard(data) {
+        // 基本資料渲染
+        if(!ssrData) {
+            document.getElementById('user-title').innerText = `${data.name} 前賢`;
+            document.getElementById('user-role').innerText = `${data.group} | ${data.role}`;
+            document.getElementById('actual-count').innerText = data.actual;
+            document.getElementById('target-count').innerText = data.target;
+            document.getElementById('encouragement').innerText = data.message;
+
+            let percent = 0;
+            if(data.target > 0) percent = Math.round((data.actual / data.target) * 100);
+            if(percent > 100) percent = 100;
+            const bar = document.getElementById('progress-bar');
+            bar.style.width = percent + "%";
+            bar.innerText = percent + "%";
+            bar.className = 'progress-bar'; // reset
+            if(percent >= 100) bar.classList.add('bg-success');
+            else if(percent >= 50) bar.classList.add('bg-info');
+            else bar.classList.add('bg-warning');
+        }
+
+        // 2. 管理面板邏輯
+        if(data.managed_members && data.managed_members.length > 0) {
+            document.getElementById('admin-panel').style.display = 'block';
+            allMembers = data.managed_members;
+
+            // [核心修改] 新增 區級/堂級 角色到 AdminView
+            const adminRoles = ['壇務組長', '事務組', '道務組', '區道務部', '區事務部', '管理員'];
+
+            if (adminRoles.includes(data.role)) {
+                initAdminView();
+            } else {
+                initLeaderView();
+            }
+        }
+    }
+
+    function initAdminView() {
+        groupedMembers = {};
+        // 結構： { "公堂A": { "壇務一組": [], "壇務二組": [] }, "公堂B": ... }
+        const nestedGroups = {};
+        const halls = new Set();
+
+        allMembers.forEach(m => {
+            const hName = m.hall || "未指定公堂";
+            const gName = m.group || "其他";
+
+            if (!nestedGroups[hName]) nestedGroups[hName] = {};
+            if (!nestedGroups[hName][gName]) nestedGroups[hName][gName] = [];
+
+            nestedGroups[hName][gName].push(m);
+            halls.add(hName);
+        });
+
+        const selector = document.getElementById('group-selector');
+        selector.innerHTML = '';
+        selector.style.display = 'block';
+        document.getElementById('member-list').style.display = 'none';
+        document.getElementById('btn-back').style.display = 'none';
+
+        // 1. 依照公堂排序
+        const sortedHalls = Array.from(halls).sort();
+        const sortOrder = ["壇務一組", "壇務二組", "壇務三組", "其他"];
+
+        sortedHalls.forEach(hallName => {
+            // 顯示公堂標題
+            selector.innerHTML += `<div class="hall-header">${hallName}</div>`;
+
+            const groupsInHall = nestedGroups[hallName];
+
+            // 2. 依照組別排序渲染按鈕
+            const renderBtn = (gName) => {
+                if (groupsInHall[gName]) {
+                    const members = groupsInHall[gName];
+                    const count = members.length;
+                    // 建立唯一 key 供點擊事件使用
+                    const cacheKey = `H_${hallName}_G_${gName}`;
+                    groupedMembers[cacheKey] = members;
+
+                    const btn = `
+                        <div class="group-btn" onclick="showGroupMembers('${cacheKey}')">
+                            <span class="group-name"><i class="fas fa-users me-2"></i>${gName}</span>
+                            <span class="group-count">${count} 人</span>
+                        </div>
+                    `;
+                    selector.innerHTML += btn;
+                }
+            };
+
+            sortOrder.forEach(renderBtn);
+            // 渲染剩下不在排序清單中的組別
+            for (const gName in groupsInHall) {
+                if (!sortOrder.includes(gName)) renderBtn(gName);
+            }
+        });
+    }
+
+    function initLeaderView() {
+        document.getElementById('group-selector').style.display = 'none';
+        document.getElementById('member-list').style.display = 'block';
+        document.getElementById('btn-back').style.display = 'none';
+        renderMembers(allMembers);
+    }
+
+    function showGroupMembers(cacheKey) {
+        document.getElementById('group-selector').style.display = 'none';
+        document.getElementById('member-list').style.display = 'block';
+        document.getElementById('btn-back').style.display = 'inline-block';
+
+        const members = groupedMembers[cacheKey] || [];
+        renderMembers(members);
+    }
+
+    function renderMembers(members) {
+        const listContainer = document.getElementById('member-list');
+        listContainer.innerHTML = '';
+        members.sort((a, b) => b.rate - a.rate);
+
+        members.forEach(m => {
+            let barColor = "bg-primary";
+            const item = `
+                <div class="member-item">
+                    <div class="member-info">
+                        <div class="fw-bold">${m.name}</div>
+                        <div class="progress mt-1" style="height: 6px; width: 80%;">
+                            <div class="progress-bar ${barColor}" style="width: ${m.rate}%"></div>
+                        </div>
+                    </div>
+                    <div class="member-stat">
+                        <div class="fs-5 fw-bold text-primary">${m.actual}/${m.target}</div>
+                        <div class="small text-muted">${m.rate}%</div>
+                    </div>
+                </div>
+            `;
+            listContainer.innerHTML += item;
+        });
+    }
+
+    function showGroupSelector() {
+        document.getElementById('member-list').style.display = 'none';
+        document.getElementById('group-selector').style.display = 'block';
+        document.getElementById('btn-back').style.display = 'none';
+    }
+
+    function updateGoal() {
+        const newGoal = document.getElementById('new-goal').value;
+        if(!newGoal || newGoal <= 0) {
+            Swal.fire("提示", "請輸入有效的數字", "warning");
+            return;
+        }
+
+        liff.getProfile().then(profile => {
+            const userId = profile.userId;
+            const formData = new FormData();
+            formData.append('user_id', userId);
+            formData.append('goal', newGoal);
+
+            fetch('/api/update_goal', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    if(data.success) {
+                        Swal.fire("成功", "目標已更新！", "success").then(() => {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire("失敗", "更新失敗，請稍後再試", "error");
+                    }
+                });
+        });
+    }
+
+    initializeLiff();
+</script>
+
+</body>
+</html>

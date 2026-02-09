@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公堂設備故障申報</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        body { background-color: #fff5f5; padding-top: 20px; font-family: "Microsoft JhengHei", sans-serif; }
+        .main-card { border: none; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); background: white; overflow: hidden; }
+        .card-header-custom { background: linear-gradient(135deg, #cb2d3e 0%, #ef473a 100%); color: white; padding: 20px; text-align: center; }
+        .profile-section { text-align: center; margin-top: -40px; margin-bottom: 20px; }
+        .profile-img { width: 80px; height: 80px; border-radius: 50%; border: 4px solid white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .btn-report { background: linear-gradient(135deg, #e52d27 0%, #b31217 100%); border: none; color: white; font-weight: bold; font-size: 1.1rem; transition: transform 0.2s; }
+        .btn-report:active { transform: scale(0.98); }
+        .form-control, .form-select { border-radius: 10px; padding: 12px; border: 1px solid #e1e4e8; }
+        .upload-btn { border: 2px dashed #cbd5e0; border-radius: 15px; padding: 20px 10px; text-align: center; cursor: pointer; transition: all 0.3s; background-color: #f8f9fa; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .upload-btn:hover { background-color: #fff0f0; border-color: #cb2d3e; transform: translateY(-2px); }
+        .upload-btn.active { border-color: #cb2d3e; background-color: #fff0f0; }
+        #preview-container { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; justify-content: center; }
+        .preview-item { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 2px solid #fff; }
+        .section-label { color: #8a2be2; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; }
+        .section-label i { color: #cb2d3e; margin-right: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="container" style="max-width: 500px;">
+    <div class="main-card">
+        <div class="card-header-custom">
+            <!-- [版本號 v2.9 區分顯示連結與系統連結] -->
+            <h4 class="mb-1">設備故障申報</h4>
+            <h5 class="mb-4">維修通報系統</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="profile-section">
+                <img id="user-picture" class="profile-img" src="https://via.placeholder.com/150/cccccc/ffffff?text=User" alt="User">
+                <h5 class="mt-2 fw-bold" id="user-name">
+                    <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
+                    讀取身分中...
+                </h5>
+            </div>
+            <form id="report-form">
+                <div class="mb-4">
+                    <label for="hall-select" class="section-label"><i class="fas fa-map-marker-alt"></i>位置</label>
+                    <select id="hall-select" class="form-select">
+                        <option value="" disabled selected>-- 請選擇公堂 --</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label for="item" class="section-label"><i class="fas fa-tools"></i>故障設備 / 項目</label>
+                    <input type="text" class="form-control" id="item" placeholder="例如：冷氣漏水、電燈不亮...">
+                </div>
+                <div class="mb-4">
+                    <label for="desc" class="section-label"><i class="fas fa-comment-dots"></i>故障描述 (選填)</label>
+                    <textarea class="form-control" id="desc" rows="3" placeholder="請簡述故障情形 (若無可不填)..."></textarea>
+                </div>
+                <div class="mb-4">
+                    <label class="section-label"><i class="fas fa-camera"></i>現場照片 (每次申報將自動建立雲端資料夾)</label>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="upload-btn" id="btn-camera" onclick="document.getElementById('cameraInput').click()">
+                                <i class="fas fa-camera fa-2x"></i><div>立即拍照</div>
+                            </div>
+                            <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none" onchange="handleFileSelect(this, 'camera')">
+                        </div>
+                        <div class="col-6">
+                            <div class="upload-btn" id="btn-gallery" onclick="document.getElementById('galleryInput').click()">
+                                <i class="fas fa-images fa-2x"></i><div>從相簿選</div>
+                            </div>
+                            <input type="file" id="galleryInput" accept="image/*" multiple style="display: none" onchange="handleFileSelect(this, 'gallery')">
+                        </div>
+                    </div>
+                    <div id="preview-container"></div>
+                    <div id="file-info" class="text-center mt-2 text-muted small" style="display: none;"></div>
+                    <div id="clear-btn-container" class="text-center mt-2" style="display: none;">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearFiles()">
+                            <i class="fas fa-trash-alt me-1"></i>重新選擇
+                        </button>
+                    </div>
+                </div>
+                <div class="d-grid gap-2 mt-4">
+                    <button type="button" id="submit-btn" class="btn btn-report py-3 shadow-sm" onclick="submitReport()">
+                        <i class="fas fa-paper-plane me-2"></i>送出申報
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+<script>
+    const LIFF_ID = "{{ liff_id }}";
+    const locationList = {{ locations | tojson }};
+    let selectedFiles = [];
+
+    document.addEventListener("DOMContentLoaded", function() {
+        initHallSelect();
+        initializeLiff();
+    });
+
+    function initHallSelect() {
+        const select = document.getElementById('hall-select');
+        while (select.options.length > 1) { select.remove(1); }
+
+        if (locationList && locationList.length > 0) {
+            locationList.forEach(loc => {
+                const opt = document.createElement('option');
+                opt.value = loc;
+                opt.text = loc;
+                select.appendChild(opt);
+            });
+            if (locationList.length === 1) select.selectedIndex = 1;
+        } else {
+            const opt = document.createElement('option');
+            opt.value = "本堂";
+            opt.text = "本堂";
+            select.appendChild(opt);
+            select.selectedIndex = 1;
+        }
+    }
+
+    function initializeLiff() {
+        liff.init({ liffId: LIFF_ID }).then(() => {
+            if (!liff.isLoggedIn()) {
+                liff.login();
+            } else {
+                getProfile();
+            }
+        }).catch(err => {
+            console.error("LIFF Init Failed:", err);
+            document.getElementById('user-name').innerText = "未登入 (LIFF 錯誤)";
+        });
+    }
+
+    function getProfile() {
+        liff.getProfile().then(profile => {
+            document.getElementById('user-name').textContent = profile.displayName + " 前賢";
+            if (profile.pictureUrl) document.getElementById('user-picture').src = profile.pictureUrl;
+        });
+    }
+
+    function handleFileSelect(input, source) {
+        if (input.files && input.files.length > 0) {
+            const newFiles = Array.from(input.files);
+
+            if (source === 'camera') {
+                selectedFiles = newFiles;
+            } else {
+                selectedFiles = selectedFiles.concat(newFiles);
+            }
+
+            document.querySelectorAll('.upload-btn').forEach(el => el.classList.remove('active'));
+            if (source === 'camera') document.getElementById('btn-camera').classList.add('active');
+            else document.getElementById('btn-gallery').classList.add('active');
+
+            renderPreviews();
+            input.value = '';
+        }
+    }
+
+    function renderPreviews() {
+        const container = document.getElementById('preview-container');
+        container.innerHTML = '';
+        const info = document.getElementById('file-info');
+        const clearBtn = document.getElementById('clear-btn-container');
+
+        if (selectedFiles.length > 0) {
+            selectedFiles.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.className = 'preview-item';
+                    container.appendChild(img);
+                }
+                reader.readAsDataURL(file);
+            });
+            info.style.display = 'block';
+            info.innerText = `目前已選 ${selectedFiles.length} 張照片`;
+            clearBtn.style.display = 'block';
+        } else {
+            info.style.display = 'none';
+            clearBtn.style.display = 'none';
+        }
+    }
+
+    function clearFiles() {
+        selectedFiles = [];
+        renderPreviews();
+        document.querySelectorAll('.upload-btn').forEach(el => el.classList.remove('active'));
+    }
+
+    async function submitReport() {
+        const btn = document.getElementById('submit-btn');
+        const hall = document.getElementById('hall-select').value;
+        const item = document.getElementById('item').value.trim();
+        let desc = document.getElementById('desc').value.trim();
+
+        if (!hall) {
+            Swal.fire({ icon: 'warning', title: '請選擇位置', text: '請問是哪一間公堂設備故障？' });
+            return;
+        }
+
+        if (!item) {
+            Swal.fire({ icon: 'warning', title: '請填寫故障設備', text: '讓我們知道哪裡壞掉了' });
+            return;
+        }
+
+        if (!desc) {
+            desc = selectedFiles.length > 0 ? "詳見照片" : "無詳細描述";
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>處理中...';
+
+        let displayUrl = ""; // F欄 (照片連結)：給人看的
+        let recordUrl = "";  // H欄 (原始連結)：給系統刪除用的 (資料夾)
+
+        let imageUrls = [];
+        let folderLink = "";
+
+        try {
+            const folderPrefix = hall ? `[${hall}]` : "";
+
+            if (selectedFiles.length > 0) {
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>建立雲端資料夾...';
+
+                // 1. 建立資料夾
+                const createFolderRes = await fetch('/api/create_folder', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ item_name: folderPrefix + item })
+                });
+
+                if (!createFolderRes.ok) throw new Error("資料夾建立失敗");
+                const folderData = await createFolderRes.json();
+
+                if (!folderData.success) throw new Error("資料夾 API 回傳錯誤");
+
+                const folderId = folderData.folder_id;
+                folderLink = folderData.folder_link;
+
+                // 2. 上傳照片
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>上傳照片 ${i+1} / ${selectedFiles.length}...`;
+                    const formData = new FormData();
+                    formData.append('file', selectedFiles[i]);
+                    formData.append('folder_id', folderId);
+
+                    const uploadRes = await fetch('/upload', { method: 'POST', body: formData });
+                    const uploadData = await uploadRes.json();
+
+                    if (uploadRes.ok && uploadData.url) {
+                        imageUrls.push(uploadData.url);
+                    }
+                }
+
+                if (imageUrls.length === 0) throw new Error("照片上傳失敗");
+
+                // === [核心邏輯修正] ===
+                // H欄 (Record): 只要有建立資料夾，就存資料夾連結，方便刪除
+                if (folderLink) {
+                    recordUrl = folderLink;
+                } else {
+                    // 萬一沒資料夾(極少見)，只好存第一張圖
+                    recordUrl = imageUrls[0];
+                }
+
+                // F欄 (Display):
+                if (imageUrls.length === 1) {
+                    // 單張照片 -> 存照片直連 (方便直接看)
+                    displayUrl = imageUrls[0];
+                } else {
+                    // 多張照片 -> 存資料夾連結 (方便看全部)
+                    displayUrl = folderLink || imageUrls[0];
+                }
+
+            } else {
+                displayUrl = "";
+                recordUrl = "";
+            }
+
+            const profile = await liff.getProfile();
+            const submitData = {
+                userId: profile.userId,
+                userName: document.getElementById('user-name').innerText.replace(' 前賢', ''),
+                hall: hall,
+                item: item,
+                desc: desc,
+                photos: imageUrls,
+                displayUrl: displayUrl, // 給 F 欄
+                recordUrl: recordUrl    // 給 H 欄
+            };
+
+            const apiRes = await fetch('/api/submit_fix', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(submitData)
+            });
+
+            if (!apiRes.ok) throw new Error("資料庫寫入失敗");
+
+            // LINE 訊息顯示的連結，應該是給人看的 (displayUrl)
+            const messageText = `(系統已錄案) #報修 【${hall}】${item} | ${desc} | ${displayUrl}`;
+
+            const messages = [{ type: 'text', text: messageText }];
+
+            liff.sendMessages(messages).then(() => {
+                Swal.fire({
+                    icon: 'success',
+                    title: '申報成功！',
+                    text: '感謝您的發心通報 🙏',
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => liff.closeWindow());
+            }).catch((err) => { throw err; });
+
+        } catch (err) {
+            console.error(err);
+            Swal.fire({
+                icon: 'error',
+                title: '作業失敗',
+                text: err.message || "網路錯誤",
+                footer: '請截圖此畫面回報給管理員'
+            });
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane me-2"></i>送出申報';
+        }
+    }
+</script>
+</body>
+</html>
