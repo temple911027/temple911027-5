@@ -46,7 +46,6 @@ def create_app():
         user_id_param = request.args.get('user_id')
         liff_state = request.args.get('liff.state')
 
-        # 處理 LIFF 轉址後的參數解析
         if not page and liff_state:
             try:
                 decoded_state = unquote(liff_state)
@@ -62,7 +61,6 @@ def create_app():
 
         template_context = {"liff_id": liff_id}
 
-        # 頁面路由判斷
         if page == 'class_info':
             template_name = "class_info.html"
             try:
@@ -135,7 +133,7 @@ def create_app():
         response.headers["Expires"] = "0"
         return response
 
-    # --- API 接口 ---
+    # --- API ---
     @app.route("/api/classes")
     def api_get_classes():
         try:
@@ -161,7 +159,6 @@ def create_app():
 
     @app.route("/api/update_goal", methods=['POST'])
     def api_update_goal():
-        # 兼容 JSON 和 Form Data
         if request.is_json:
             user_id = request.json.get('user_id')
             goal = request.json.get('goal')
@@ -238,7 +235,6 @@ def create_app():
         except Exception as e:
             return jsonify({'allowed': False, 'error': str(e)}), 500
 
-    # --- 新增功能 API ---
     @app.route("/api/register_class", methods=['POST'])
     def api_register_class():
         d = request.json
