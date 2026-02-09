@@ -26,11 +26,12 @@ def init_full_application():
     }
     
     # 啟動時建立選單
-    rich_menu_handler.create_rich_menu(settings.LINE_CHANNEL_ACCESS_TOKEN, menu_config)
+    rich_menu_handler.create_rich_menu(menu_config)
 
     print(f"🚀 伺服器啟動於 port {settings.PORT}")
     from waitress import serve
     serve(app, host='0.0.0.0', port=settings.PORT)
 
 if __name__ == '__main__':
+
     init_full_application()
