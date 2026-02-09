@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>慧霖宮壇務佈告欄</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body{font-family:"Microsoft JhengHei",sans-serif;padding:15px;background:#fdfbf7;color:#5d4037;}
+        .tab{padding:10px;background:#eee;margin-right:5px;border-radius:5px;cursor:pointer;display:inline-block;}
+        .tab.active{background:#e6d0a5;color:#5d4037;font-weight:bold;}
+        .card{background:#fff;padding:15px;margin-top:10px;border-radius:10px;box-shadow:0 2px 5px rgba(0,0,0,0.05);border-left:5px solid #e6d0a5;}
+        button{background:#8bc34a;border:none;padding:5px 10px;border-radius:5px;color:white;cursor:pointer;}
+        button:disabled{background:#ddd;}
+    </style>
+</head>
+<body>
+    <div style="margin-bottom:15px">
+        <span class="tab active" onclick="sw('routine')">🧹 輪值</span>
+        <span class="tab" onclick="sw('public')">🙋‍♂️ 臨時任務</span>
+    </div>
+    <div id="routineBox">載入中...</div>
+    <div id="publicBox" style="display:none"></div>
+
+    <script>
+        var LIFF_ID="{{ liff_id }}", uid="";
+        window.onload=()=>{
+            liff.init({liffId:LIFF_ID}).then(()=>{
+                if(!liff.isLoggedIn())liff.login();
+                liff.getProfile().then(p=>{ uid=p.userId; loadData(); });
+            });
+        }
+        function sw(mode){
+            document.getElementById('routineBox').style.display = mode=='routine'?'block':'none';
+            document.getElementById('publicBox').style.display = mode=='public'?'block':'none';
+            document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+        function loadData(){
+            fetch('/api/my_duty?user_id='+uid).then(r=>r.json()).then(d=>{
+                var h=`<div style="margin-bottom:10px">組別：<b>${d.group}</b></div>`;
+                if(!d.tasks||d.tasks.length==0) h+='無任務';
+                else d.tasks.forEach(t=>{
+                    h+=`<div class="card">${t.area} - ${t.task} 
+                    <button onclick="fin('${t.area}','${t.task}',this)" ${t.done?'disabled':''}>${t.done?'已完成':'完成'}</button></div>`;
+                });
+                document.getElementById('routineBox').innerHTML=h;
+            });
+            fetch('/api/public_tasks').then(r=>r.json()).then(d=>{
+                var h='';
+                if(!d||d.length==0) h='目前無臨時任務';
+                else d.forEach(t=>{
+                    h+=`<div class="card" style="border-left-color:#ff7043"><b>${t.name}</b><br><small>${t.desc}</small><br>
+                    <span style="font-size:0.8rem;background:#eee;padding:2px">缺 ${t.needed-t.current} 人</span>
+                    <button style="background:#29b6f6;float:right" onclick="claim('${t.id}','${t.name}')">認領</button></div>`;
+                });
+                document.getElementById('publicBox').innerHTML=h;
+            });
+        }
+        function fin(a,t,b){
+            b.innerText="...";
+            fetch('/api/complete_task',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,area:a,task:t})})
+            .then(r=>r.json()).then(res=>{ if(res.success){b.innerText="已完成";b.disabled=true;} });
+        }
+        function claim(id,n){
+            if(confirm('確定認領?')) fetch('/api/claim_public_task',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,task_id:id,task_name:n})})
+            .then(r=>r.json()).then(res=>{ alert(res.message); loadData(); });
+        }
+    </script>
+</body>
+</html>
